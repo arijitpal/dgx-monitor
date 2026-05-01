@@ -72,9 +72,13 @@ func main() {
 	gpu := NewGPUCollector()
 	defer gpu.Close()
 
+	StartPublicIPRefresher()
+
 	var gpuHistory, memHistory []float64
+	var rxHistory, txHistory []float64
 	var currentGPU, peakGPU float64
 	var currentMemGiB, peakMemGiB, totalMemGiB float64
+	var currentRxBps, currentTxBps, peakRxBps, peakTxBps float64
 
 	// ── Widgets ────────────────────────────────────────────────────────────────
 
@@ -144,6 +148,20 @@ func main() {
 	memPlot.Data = [][]float64{{0, 0}}
 	memPlot.BorderStyle = ui.NewStyle(ui.ColorYellow)
 
+	// Network section: interface list + bandwidth plot
+	netInfo := widgets.NewParagraph()
+	netInfo.Title = " Network Interfaces "
+	netInfo.BorderStyle = ui.NewStyle(ui.ColorBlue)
+	netInfo.PaddingLeft = 1
+
+	netPlot := widgets.NewPlot()
+	netPlot.Title = " Network Bandwidth (RX/TX, 2 min history) "
+	netPlot.PlotType = widgets.LineChart
+	netPlot.LineColors = []ui.Color{ui.ColorCyan, ui.ColorMagenta}
+	netPlot.AxesColor = ui.ColorWhite
+	netPlot.Data = [][]float64{{0, 0}, {0, 0}}
+	netPlot.BorderStyle = ui.NewStyle(ui.ColorBlue)
+
 	// ── Grid ──────────────────────────────────────────────────────────────────
 
 	grid := ui.NewGrid()
@@ -151,20 +169,24 @@ func main() {
 		w, h := ui.TerminalDimensions()
 		grid.SetRect(0, 0, w, h)
 		grid.Set(
-			ui.NewRow(0.07, header),
-			ui.NewRow(0.26,
+			ui.NewRow(0.06, header),
+			ui.NewRow(0.16,
 				ui.NewCol(0.50, cpuCores),
 				ui.NewCol(0.25, cpuGauge),
 				ui.NewCol(0.25, freqPara),
 			),
-			ui.NewRow(0.22,
+			ui.NewRow(0.12,
 				ui.NewCol(0.28, gpuUtilGauge),
 				ui.NewCol(0.28, memGauge),
 				ui.NewCol(0.22, powerGauge),
 				ui.NewCol(0.22, gpuInfoPara),
 			),
-			ui.NewRow(0.225, gpuPlot),
-			ui.NewRow(0.225, memPlot),
+			ui.NewRow(0.18, gpuPlot),
+			ui.NewRow(0.18, memPlot),
+			ui.NewRow(0.30,
+				ui.NewCol(0.45, netInfo),
+				ui.NewCol(0.55, netPlot),
+			),
 		)
 	}
 	setGrid()
@@ -173,11 +195,21 @@ func main() {
 
 	update := func() {
 		hostname, _ := os.Hostname()
+		local := LocalIP()
+		if local == "" {
+			local = "—"
+		}
+		public := PublicIP()
+		if public == "" {
+			public = "—"
+		}
 		header.Text = fmt.Sprintf(
 			"  Host: [%s](fg:white,modifier:bold)   Time: [%s](fg:white)   "+
+				"Local: [%s](fg:cyan,modifier:bold)   Public: [%s](fg:cyan,modifier:bold)   "+
 				"Press [q](fg:red,modifier:bold) or [Ctrl-C](fg:red,modifier:bold) to quit",
 			hostname,
 			time.Now().Format("2006-01-02  15:04:05"),
+			local, public,
 		)
 
 		// ── CPU ───────────────────────────────────────────────────────────────
@@ -311,11 +343,72 @@ func main() {
 			currentMemGiB, peakMemGiB, totalMemGiB,
 		)
 
+		// ── Network ───────────────────────────────────────────────────────────
+		nm, _ := CollectNet()
+		if nm != nil {
+			var sb strings.Builder
+			for _, iface := range nm.Interfaces {
+				var dot, status string
+				switch {
+				case iface.IsUp && iface.HasCarrier:
+					dot = "[●](fg:green)"
+					status = "[ ACTIVE ](fg:green,modifier:bold)"
+				case iface.IsUp:
+					dot = "[●](fg:yellow)"
+					status = "[ NO LINK](fg:yellow)"
+				default:
+					dot = "[○](fg:red)"
+					status = "[INACTIVE](fg:red)"
+				}
+				kindColor := "fg:white"
+				switch iface.Kind {
+				case IfaceWireless:
+					kindColor = "fg:magenta,modifier:bold"
+				case IfaceEthernet:
+					kindColor = "fg:cyan,modifier:bold"
+				case IfaceVirtual:
+					kindColor = "fg:white"
+				case IfaceLoopback:
+					kindColor = "fg:white"
+				}
+				sb.WriteString(fmt.Sprintf(
+					" %s %-12s [%s](%s) %s  ↓ [%s](fg:cyan)  ↑ [%s](fg:magenta)\n",
+					dot, iface.Name, iface.Kind.Label(), kindColor, status,
+					formatBps(iface.RxBps), formatBps(iface.TxBps),
+				))
+			}
+			netInfo.Text = sb.String()
+
+			currentRxBps = nm.TotalRxBps
+			currentTxBps = nm.TotalTxBps
+			if currentRxBps > peakRxBps {
+				peakRxBps = currentRxBps
+			}
+			if currentTxBps > peakTxBps {
+				peakTxBps = currentTxBps
+			}
+			rxHistory = appendHistory(rxHistory, currentRxBps)
+			txHistory = appendHistory(txHistory, currentTxBps)
+		} else {
+			rxHistory = appendHistory(rxHistory, 0)
+			txHistory = appendHistory(txHistory, 0)
+		}
+
+		if len(rxHistory) >= 2 && len(txHistory) >= 2 {
+			netPlot.Data = [][]float64{rxHistory, txHistory}
+		}
+		netPlot.Title = fmt.Sprintf(
+			" Network  ↓ %s (peak %s)  ↑ %s (peak %s) ",
+			formatBps(currentRxBps), formatBps(peakRxBps),
+			formatBps(currentTxBps), formatBps(peakTxBps),
+		)
+
 		ui.Render(grid)
 	}
 
-	// Prime CPU delta (first call establishes baseline; usage shown from second call)
+	// Prime CPU and network deltas (first calls establish baselines).
 	CollectCPU()
+	CollectNet()
 	time.Sleep(200 * time.Millisecond)
 	update()
 

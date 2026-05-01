@@ -6,10 +6,10 @@ A terminal-based real-time monitoring dashboard for NVIDIA DGX GB-10 systems wit
 
 ## Requirements
 
-- Linux (reads `/proc/stat`, `/proc/meminfo`, `/sys/devices/system/cpu/`)
+- Linux (reads `/proc/stat`, `/proc/meminfo`, `/proc/net/dev`, `/sys/devices/system/cpu/`, `/sys/class/net/*/`)
 - Go 1.21+
 - NVIDIA driver with NVML support (for GPU metrics)
-- A terminal at least 120 columns × 36 rows for best layout
+- A terminal at least 120 columns × 40 rows for best layout
 
 ---
 
@@ -55,7 +55,11 @@ No flags or arguments — the dashboard starts immediately and refreshes every s
 ├─────────────────────────────────────────────────────────────────────┤
 │  Unified Memory GiB — 2D line graph (2 min rolling, right-to-left)  │
 │  Title shows: cur GiB / peak GiB / total GiB                        │
-└─────────────────────────────────────────────────────────────────────┘
+├──────────────────────────────────┬──────────────────────────────────┤
+│  Network Interfaces              │  Network Bandwidth               │
+│  ● eth0  ACTIVE   ↓ ... ↑ ...    │  RX (cyan) / TX (magenta)        │
+│  ○ wlan0 INACTIVE ↓ ... ↑ ...    │  2D line, right-to-left scroll   │
+└──────────────────────────────────┴──────────────────────────────────┘
 ```
 
 ---
@@ -65,6 +69,8 @@ No flags or arguments — the dashboard starts immediately and refreshes every s
 ### Header
 - **Host** — system hostname
 - **Time** — current local time (1 s resolution)
+- **Local** — first non-loopback IPv4 address bound to an active interface (physical/wifi NICs preferred over virtual ones)
+- **Public** — public IP fetched from `https://api.ipify.org` (refreshed every 5 minutes in the background; shows `—` if unavailable / no internet)
 
 ### CPU Cores %
 - Shows every logical core's current utilisation percentage
@@ -110,6 +116,30 @@ No flags or arguments — the dashboard starts immediately and refreshes every s
 - Scrolls right-to-left (newest sample on the right)
 - Y-axis scaled to total memory (GiB)
 - Title: `cur: XX.X  peak: XX.X  total: XX.X` (all in GiB)
+
+### Network Interfaces
+- One line per network interface detected in `/proc/net/dev`
+- **Status indicator:**
+  - `●` green — `ACTIVE` (operstate `up` and carrier detected)
+  - `●` yellow — `NO LINK` (operstate `up` but no carrier — e.g. unplugged cable)
+  - `○` red — `INACTIVE` (operstate `down`)
+- **Kind label** (color-coded):
+  - `wifi` (magenta) — wireless device (has `/sys/class/net/<iface>/wireless` or `/phy80211`)
+  - `eth ` (cyan) — physical NIC (has `/sys/class/net/<iface>/device` symlink)
+  - `virt` (white) — virtual device (docker, bridge, veth, tun/tap, virbr, etc.)
+  - `loop` (white) — loopback
+- **Bandwidth:** per-interface RX (`↓`) and TX (`↑`) rate, auto-scaled `B/s` → `KB/s` → `MB/s` → `GB/s`
+- **Sort order:** real wifi/ethernet interfaces always at the top, then virtual, then loopback. Within each kind: active+link → up but no link → down, then alphabetical.
+- **Sources:** `/proc/net/dev` (counters), `/sys/class/net/<iface>/operstate` (state), `/sys/class/net/<iface>/carrier` (link), `/sys/class/net/<iface>/{wireless,phy80211,device}` (kind detection)
+
+### Network Bandwidth Graph
+- 2D line chart with two series:
+  - **Cyan** — total RX (incoming) bytes/sec
+  - **Magenta** — total TX (outgoing) bytes/sec
+- 120-second rolling window, scrolls right-to-left
+- Y-axis auto-scales to the highest observed throughput
+- Loopback (`lo`) is excluded from the totals
+- Title: `↓ <cur> (peak <peak>)  ↑ <cur> (peak <peak>)`
 
 ---
 
