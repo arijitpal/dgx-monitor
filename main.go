@@ -15,7 +15,7 @@ import (
 const (
 	historyLen  = 120         // 120 seconds of rolling history
 	refreshRate = time.Second // 1 Hz refresh
-	coresPerCol = 8           // cores per column in the % display
+	coresPerCol = 7           // cores per column in the % display
 	maxPowerW   = 140.0       // max GPU power scale (watts)
 )
 
@@ -54,6 +54,12 @@ func gaugeColor(pct float64) ui.Color {
 	}
 }
 
+// titleStatusStyle returns a bold title style colored by status percentage.
+// Used to color the leading status dot (●) in gauge titles.
+func titleStatusStyle(pct float64) ui.Style {
+	return ui.NewStyle(gaugeColor(pct), ui.ColorClear, ui.ModifierBold)
+}
+
 // appendHistory appends a value to a fixed-length rolling slice.
 func appendHistory(h []float64, v float64) []float64 {
 	h = append(h, v)
@@ -82,85 +88,112 @@ func main() {
 
 	// ── Widgets ────────────────────────────────────────────────────────────────
 
+	// Shared "hacker terminal" styles: green-on-black, bold titles.
+	greenBorder := ui.NewStyle(ui.ColorGreen)
+	greenBoldTitle := ui.NewStyle(ui.ColorGreen, ui.ColorClear, ui.ModifierBold)
+	greenText := ui.NewStyle(ui.ColorGreen)
+	greenBoldLabel := ui.NewStyle(ui.ColorGreen, ui.ColorClear, ui.ModifierBold)
+	axes := ui.ColorGreen
+
 	header := widgets.NewParagraph()
-	header.Title = "  DGX Spark Monitor  "
-	header.TitleStyle = ui.NewStyle(ui.ColorGreen, ui.ColorClear, ui.ModifierBold)
-	header.BorderStyle = ui.NewStyle(ui.ColorGreen)
+	header.Title = " DGX SPARK MONITOR "
+	header.TitleStyle = greenBoldTitle
+	header.BorderStyle = greenBorder
+	header.TextStyle = greenText
 	header.PaddingTop = 0
 
 	// CPU section
 	cpuCores := widgets.NewParagraph()
-	cpuCores.Title = " CPU Cores % "
-	cpuCores.BorderStyle = ui.NewStyle(ui.ColorCyan)
+	cpuCores.Title = " cpu.cores "
+	cpuCores.TitleStyle = greenBoldTitle
+	cpuCores.BorderStyle = greenBorder
+	cpuCores.TextStyle = greenText
 	cpuCores.PaddingLeft = 1
 
 	cpuGauge := widgets.NewGauge()
-	cpuGauge.Title = " CPU Avg Usage "
-	cpuGauge.BarColor = ui.ColorCyan
-	cpuGauge.BorderStyle = ui.NewStyle(ui.ColorCyan)
-	cpuGauge.LabelStyle = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
+	cpuGauge.Title = " cpu.avg "
+	cpuGauge.TitleStyle = greenBoldTitle
+	cpuGauge.BarColor = ui.ColorGreen
+	cpuGauge.BorderStyle = greenBorder
+	cpuGauge.LabelStyle = greenBoldLabel
 
 	freqPara := widgets.NewParagraph()
-	freqPara.Title = " CPU Frequency "
-	freqPara.BorderStyle = ui.NewStyle(ui.ColorCyan)
+	freqPara.Title = " cpu.freq "
+	freqPara.TitleStyle = greenBoldTitle
+	freqPara.BorderStyle = greenBorder
+	freqPara.TextStyle = greenText
 	freqPara.PaddingLeft = 1
 
 	// GPU section
 	gpuUtilGauge := widgets.NewGauge()
-	gpuUtilGauge.Title = " GPU Compute "
+	gpuUtilGauge.Title = " ● gpu.compute "
+	gpuUtilGauge.TitleStyle = greenBoldTitle
 	gpuUtilGauge.BarColor = ui.ColorGreen
-	gpuUtilGauge.BorderStyle = ui.NewStyle(ui.ColorGreen)
-	gpuUtilGauge.LabelStyle = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
+	gpuUtilGauge.BorderStyle = greenBorder
+	gpuUtilGauge.LabelStyle = greenBoldLabel
 
 	memGauge := widgets.NewGauge()
-	memGauge.Title = " Unified Memory "
-	memGauge.BarColor = ui.ColorYellow
-	memGauge.BorderStyle = ui.NewStyle(ui.ColorYellow)
-	memGauge.LabelStyle = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
+	memGauge.Title = " ● mem.unified "
+	memGauge.TitleStyle = greenBoldTitle
+	memGauge.BarColor = ui.ColorGreen
+	memGauge.BorderStyle = greenBorder
+	memGauge.LabelStyle = greenBoldLabel
 
 	powerGauge := widgets.NewGauge()
-	powerGauge.Title = " GPU Power "
-	powerGauge.BarColor = ui.ColorMagenta
-	powerGauge.BorderStyle = ui.NewStyle(ui.ColorMagenta)
-	powerGauge.LabelStyle = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
+	powerGauge.Title = " ● gpu.power "
+	powerGauge.TitleStyle = greenBoldTitle
+	powerGauge.BarColor = ui.ColorGreen
+	powerGauge.BorderStyle = greenBorder
+	powerGauge.LabelStyle = greenBoldLabel
 
 	gpuInfoPara := widgets.NewParagraph()
-	gpuInfoPara.Title = " GPU Info "
-	gpuInfoPara.BorderStyle = ui.NewStyle(ui.ColorGreen)
+	gpuInfoPara.Title = " gpu.info "
+	gpuInfoPara.TitleStyle = greenBoldTitle
+	gpuInfoPara.BorderStyle = greenBorder
+	gpuInfoPara.TextStyle = greenText
 	gpuInfoPara.PaddingLeft = 1
 
-	// Plot: GPU compute history (2D line, scrolls right-to-left)
+	// Plot: GPU compute history (scatter dots, scrolls right-to-left)
 	gpuPlot := widgets.NewPlot()
-	gpuPlot.Title = " GPU Compute %  (2 min history — press q to quit) "
+	gpuPlot.Title = " gpu.compute.history "
+	gpuPlot.TitleStyle = greenBoldTitle
 	gpuPlot.PlotType = widgets.LineChart
+	gpuPlot.HorizontalScale = 2
 	gpuPlot.LineColors = []ui.Color{ui.ColorGreen}
-	gpuPlot.AxesColor = ui.ColorWhite
+	gpuPlot.AxesColor = axes
 	gpuPlot.MaxVal = 100
 	gpuPlot.Data = [][]float64{{0, 0}}
-	gpuPlot.BorderStyle = ui.NewStyle(ui.ColorGreen)
+	gpuPlot.BorderStyle = greenBorder
 
-	// Plot: unified memory history in GiB (2D line, scrolls right-to-left)
+	// Plot: unified memory history in GiB (scatter dots, scrolls right-to-left)
 	memPlot := widgets.NewPlot()
-	memPlot.Title = " Unified Memory GiB  (2 min history) "
+	memPlot.Title = " mem.unified.history "
+	memPlot.TitleStyle = greenBoldTitle
 	memPlot.PlotType = widgets.LineChart
-	memPlot.LineColors = []ui.Color{ui.ColorYellow}
-	memPlot.AxesColor = ui.ColorWhite
+	memPlot.HorizontalScale = 2
+	memPlot.LineColors = []ui.Color{ui.ColorGreen}
+	memPlot.AxesColor = axes
 	memPlot.Data = [][]float64{{0, 0}}
-	memPlot.BorderStyle = ui.NewStyle(ui.ColorYellow)
+	memPlot.BorderStyle = greenBorder
 
 	// Network section: interface list + bandwidth plot
 	netInfo := widgets.NewParagraph()
-	netInfo.Title = " Network Interfaces "
-	netInfo.BorderStyle = ui.NewStyle(ui.ColorBlue)
+	netInfo.Title = " net.interfaces "
+	netInfo.TitleStyle = greenBoldTitle
+	netInfo.BorderStyle = greenBorder
+	netInfo.TextStyle = greenText
 	netInfo.PaddingLeft = 1
 
 	netPlot := widgets.NewPlot()
-	netPlot.Title = " Network Bandwidth (RX/TX, 2 min history) "
+	netPlot.Title = " net.bandwidth "
+	netPlot.TitleStyle = greenBoldTitle
 	netPlot.PlotType = widgets.LineChart
-	netPlot.LineColors = []ui.Color{ui.ColorCyan, ui.ColorMagenta}
-	netPlot.AxesColor = ui.ColorWhite
+	netPlot.HorizontalScale = 2
+	netPlot.LineColors = []ui.Color{ui.ColorGreen, ui.ColorRed}
+	netPlot.AxesColor = axes
+	netPlot.ShowAxes = false
 	netPlot.Data = [][]float64{{0, 0}, {0, 0}}
-	netPlot.BorderStyle = ui.NewStyle(ui.ColorBlue)
+	netPlot.BorderStyle = greenBorder
 
 	// ── Grid ──────────────────────────────────────────────────────────────────
 
@@ -169,23 +202,25 @@ func main() {
 		w, h := ui.TerminalDimensions()
 		grid.SetRect(0, 0, w, h)
 		grid.Set(
-			ui.NewRow(0.06, header),
-			ui.NewRow(0.16,
+			ui.NewRow(0.07, header),
+			ui.NewRow(0.13,
 				ui.NewCol(0.50, cpuCores),
 				ui.NewCol(0.25, cpuGauge),
 				ui.NewCol(0.25, freqPara),
 			),
-			ui.NewRow(0.12,
+			ui.NewRow(0.11,
 				ui.NewCol(0.28, gpuUtilGauge),
 				ui.NewCol(0.28, memGauge),
 				ui.NewCol(0.22, powerGauge),
 				ui.NewCol(0.22, gpuInfoPara),
 			),
-			ui.NewRow(0.18, gpuPlot),
-			ui.NewRow(0.18, memPlot),
-			ui.NewRow(0.30,
-				ui.NewCol(0.45, netInfo),
-				ui.NewCol(0.55, netPlot),
+			ui.NewRow(0.38,
+				ui.NewCol(0.50, gpuPlot),
+				ui.NewCol(0.50, memPlot),
+			),
+			ui.NewRow(0.31,
+				ui.NewCol(0.50, netInfo),
+				ui.NewCol(0.50, netPlot),
 			),
 		)
 	}
@@ -204,11 +239,14 @@ func main() {
 			public = "—"
 		}
 		header.Text = fmt.Sprintf(
-			"  Host: [%s](fg:white,modifier:bold)   Time: [%s](fg:white)   "+
-				"Local: [%s](fg:cyan,modifier:bold)   Public: [%s](fg:cyan,modifier:bold)   "+
-				"Press [q](fg:red,modifier:bold) or [Ctrl-C](fg:red,modifier:bold) to quit",
+			" [$](fg:green,modifier:bold) "+
+				"[host](fg:green)=[%s](fg:green,modifier:bold)  "+
+				"[time](fg:green)=[%s](fg:green,modifier:bold)  "+
+				"[local](fg:green)=[%s](fg:green,modifier:bold)  "+
+				"[public](fg:green)=[%s](fg:green,modifier:bold)   "+
+				"[<q>](fg:red,modifier:bold) [exit](fg:red)",
 			hostname,
-			time.Now().Format("2006-01-02  15:04:05"),
+			time.Now().Format("2006-01-02 15:04:05"),
 			local, public,
 		)
 
@@ -247,17 +285,17 @@ func main() {
 
 			if cpu.AvgFreqMHz > 0 {
 				freqPara.Text = fmt.Sprintf(
-					" Avg  [%.0f MHz](fg:white,modifier:bold)\n"+
-						" Max  [%.0f MHz](%s)\n"+
-						" Min  [%.0f MHz](fg:cyan)\n"+
-						" Cores [%d](fg:white)",
+					" avg   [%.0f MHz](fg:green,modifier:bold)\n"+
+						" max   [%.0f MHz](%s)\n"+
+						" min   [%.0f MHz](fg:green)\n"+
+						" cores [%d](fg:green,modifier:bold)",
 					cpu.AvgFreqMHz,
 					cpu.MaxFreqMHz, colorForPct(0),
 					cpu.MinFreqMHz,
 					cpu.NumCores,
 				)
 			} else {
-				freqPara.Text = fmt.Sprintf(" Cores [%d](fg:white)\n Freq  [N/A](fg:red)", cpu.NumCores)
+				freqPara.Text = fmt.Sprintf(" cores [%d](fg:green,modifier:bold)\n freq  [N/A](fg:red)", cpu.NumCores)
 			}
 		}
 
@@ -267,6 +305,7 @@ func main() {
 			memPct := clamp(int(math.Round(mem.UsedPercent)))
 			memGauge.Percent = memPct
 			memGauge.BarColor = gaugeColor(mem.UsedPercent)
+			memGauge.TitleStyle = titleStatusStyle(mem.UsedPercent)
 			memGauge.Label = fmt.Sprintf(
 				"%d%%   %.1f / %.1f GiB",
 				memPct,
@@ -291,21 +330,23 @@ func main() {
 			utilPct := clamp(int(d.ComputeUtil))
 			gpuUtilGauge.Percent = utilPct
 			gpuUtilGauge.BarColor = gaugeColor(float64(d.ComputeUtil))
+			gpuUtilGauge.TitleStyle = titleStatusStyle(float64(d.ComputeUtil))
 			gpuUtilGauge.Label = fmt.Sprintf("%d%%   @ %d MHz", utilPct, d.GPUClockMHz)
 
 			pwPctF := d.PowerW / maxPowerW * 100.0
 			pwPct := clamp(int(math.Round(pwPctF)))
 			powerGauge.Percent = pwPct
 			powerGauge.BarColor = gaugeColor(pwPctF)
+			powerGauge.TitleStyle = titleStatusStyle(pwPctF)
 			powerGauge.Label = fmt.Sprintf("%.0fW / %.0fW", d.PowerW, maxPowerW)
 
 			gpuInfoPara.Text = fmt.Sprintf(
 				" [%s](fg:green,modifier:bold)\n"+
-					" Temp  [%d°C](%s)\n"+
-					" GMem  [%d MHz](fg:cyan)\n"+
-					" VRAMu [%.1f GiB](fg:white)",
+					" temp  [%d°C](%s)\n"+
+					" gmem  [%d MHz](fg:green)\n"+
+					" vram  [%.1f GiB](fg:green,modifier:bold)",
 				d.Name,
-				d.TempC, colorForPct(float64(d.TempC)/1.2), // rough heat scale
+				d.TempC, colorForPct(float64(d.TempC)/1.2),
 				d.MemClockMHz,
 				float64(d.MemUsed)/1073741824,
 			)
@@ -318,8 +359,10 @@ func main() {
 		} else {
 			gpuUtilGauge.Percent = 0
 			gpuUtilGauge.Label = "N/A — no NVML device"
+			gpuUtilGauge.TitleStyle = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
 			powerGauge.Percent = 0
 			powerGauge.Label = "N/A"
+			powerGauge.TitleStyle = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
 			gpuInfoPara.Text = " [No GPU / NVML unavailable](fg:red)"
 			gpuHistory = appendHistory(gpuHistory, 0)
 		}
@@ -347,6 +390,12 @@ func main() {
 		nm, _ := CollectNet()
 		if nm != nil {
 			var sb strings.Builder
+			// Color legend matching the net.bandwidth plot lines.
+			sb.WriteString(" graph legend → ")
+			sb.WriteString("[━ RX (incoming)](fg:green,modifier:bold)")
+			sb.WriteString("   ")
+			sb.WriteString("[━ TX (outgoing)](fg:red,modifier:bold)")
+			sb.WriteString("\n")
 			for _, iface := range nm.Interfaces {
 				var dot, status string
 				switch {
@@ -363,16 +412,16 @@ func main() {
 				kindColor := "fg:white"
 				switch iface.Kind {
 				case IfaceWireless:
-					kindColor = "fg:magenta,modifier:bold"
+					kindColor = "fg:green,modifier:bold"
 				case IfaceEthernet:
-					kindColor = "fg:cyan,modifier:bold"
+					kindColor = "fg:green,modifier:bold"
 				case IfaceVirtual:
 					kindColor = "fg:white"
 				case IfaceLoopback:
 					kindColor = "fg:white"
 				}
 				sb.WriteString(fmt.Sprintf(
-					" %s %-12s [%s](%s) %s  ↓ [%s](fg:cyan)  ↑ [%s](fg:magenta)\n",
+					" %s %-12s [%s](%s) %s  ↓ [%s](fg:green)  ↑ [%s](fg:red)\n",
 					dot, iface.Name, iface.Kind.Label(), kindColor, status,
 					formatBps(iface.RxBps), formatBps(iface.TxBps),
 				))

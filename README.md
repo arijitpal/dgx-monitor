@@ -42,25 +42,25 @@ No flags or arguments — the dashboard starts immediately and refreshes every s
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  DGX Spark Monitor   Host: <hostname>   Time: 2025-01-01 12:00:00   │
+│ ░▒▓ DGX SPARK MONITOR ▓▒░  $ host=…  time=…  local=…  public=…  <q>│
 ├──────────────────────────────────┬─────────────┬────────────────────┤
-│  CPU Cores %                     │ CPU Avg     │ CPU Frequency      │
-│  (per-core % in column layout)   │ Usage gauge │ Avg / Max / Min    │
-├──────────────────┬───────────────┼─────────────┴──────────┬─────────┤
-│  GPU Compute     │ Unified Mem   │  GPU Power             │GPU Info │
-│  gauge           │ gauge (GiB)   │  gauge (0–140 W)       │         │
-├──────────────────┴───────────────┴────────────────────────┴─────────┤
-│  GPU Compute % — 2D line graph (2 min rolling, right-to-left)        │
-│  Title shows: cur / peak / range 0–100%                              │
-├─────────────────────────────────────────────────────────────────────┤
-│  Unified Memory GiB — 2D line graph (2 min rolling, right-to-left)  │
-│  Title shows: cur GiB / peak GiB / total GiB                        │
-├──────────────────────────────────┬──────────────────────────────────┤
-│  Network Interfaces              │  Network Bandwidth               │
-│  ● eth0  ACTIVE   ↓ ... ↑ ...    │  RX (cyan) / TX (magenta)        │
-│  ○ wlan0 INACTIVE ↓ ... ↑ ...    │  2D line, right-to-left scroll   │
+│  cpu.cores  (column layout)      │ cpu.avg     │ cpu.freq           │
+│                                  │ gauge       │ avg / max / min    │
+├──────────────┬───────────────────┼─────────────┴──────────┬─────────┤
+│ gpu.compute  │ mem.unified       │ gpu.power (0–140 W)    │gpu.info │
+├──────────────┴───────────────────┴────────────────────────┴─────────┤
+│ gpu.compute.history (2D line)    │ mem.unified.history (2D line)   │
+│ % vs time, right-to-left         │ GiB vs time, right-to-left      │
+├──────────────────────────────────┴──────────────────────────────────┤
+│ net.interfaces (kinds: wifi/eth  │ net.bandwidth (RX green / TX    │
+│ first, then virt/loop)           │ red, right-to-left)             │
 └──────────────────────────────────┴──────────────────────────────────┘
 ```
+
+The whole dashboard uses a green-on-black "matrix terminal" aesthetic:
+green borders, bold green titles, RX traffic in green and TX in red.
+Threshold colors (yellow / red) are still used on gauges and link
+states for at-a-glance warnings.
 
 ---
 
@@ -134,8 +134,8 @@ No flags or arguments — the dashboard starts immediately and refreshes every s
 
 ### Network Bandwidth Graph
 - 2D line chart with two series:
-  - **Cyan** — total RX (incoming) bytes/sec
-  - **Magenta** — total TX (outgoing) bytes/sec
+  - **Green** — total RX (incoming) bytes/sec
+  - **Red** — total TX (outgoing) bytes/sec
 - 120-second rolling window, scrolls right-to-left
 - Y-axis auto-scales to the highest observed throughput
 - Loopback (`lo`) is excluded from the totals
